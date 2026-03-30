@@ -111,10 +111,9 @@ class DiscoveryToolContext:
 async def get_mart_models(
     context: DiscoveryToolContext,
 ) -> list[dict]:
-    config = await context.config_provider.get_config()
     mart_models = await context.models_fetcher.fetch_models(
         model_filter={"modelingLayer": "marts"},
-        config=config,
+        config=await context.config_provider.get_config(),
     )
     return [m for m in mart_models if m["name"] != "metricflow_time_spine"]
 
@@ -168,7 +167,7 @@ async def get_model_parents(
 ) -> list[dict]:
     config = await context.config_provider.get_config()
     return await context.models_fetcher.fetch_model_parents(
-        name, unique_id, config=config
+        model_name=name, unique_id=unique_id, config=config
     )
 
 
