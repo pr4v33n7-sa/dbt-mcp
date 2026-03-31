@@ -7,6 +7,7 @@ from dbt_mcp.config.config_providers import (
     DefaultProxiedToolConfigProvider,
     DefaultSemanticLayerConfigProvider,
     MultiProjectDiscoveryConfigProvider,
+    MultiProjectSemanticLayerConfigProvider,
 )
 from dbt_mcp.config.settings import (
     CredentialsProvider,
@@ -78,8 +79,11 @@ class Config:
     proxied_tool_config_provider: DefaultProxiedToolConfigProvider | None
     dbt_cli_config: DbtCliConfig | None
     dbt_codegen_config: DbtCodegenConfig | None
-    multi_project_config_provider: MultiProjectDiscoveryConfigProvider | None
+    multi_project_discovery_config_provider: MultiProjectDiscoveryConfigProvider | None
     discovery_config_provider: DefaultDiscoveryConfigProvider | None
+    multi_project_semantic_layer_config_provider: (
+        MultiProjectSemanticLayerConfigProvider | None
+    )
     semantic_layer_config_provider: DefaultSemanticLayerConfigProvider | None
     admin_api_config_provider: DefaultAdminApiConfigProvider | None
     credentials_provider: CredentialsProvider
@@ -121,15 +125,24 @@ def load_config(enable_proxied_tools: bool = True) -> Config:
 
     admin_api_config_provider = None
     multi_project_config_provider = None
+    multi_project_semantic_layer_config_provider = None
     if settings.actual_host:
         admin_api_config_provider = DefaultAdminApiConfigProvider(
             credentials_provider=credentials_provider,
         )
+        admin_client = DbtAdminAPIClient(admin_api_config_provider)
         if settings.dbt_account_id:
             multi_project_config_provider = MultiProjectDiscoveryConfigProvider(
                 account_id=settings.dbt_account_id,
                 credentials_provider=credentials_provider,
-                admin_client=DbtAdminAPIClient(admin_api_config_provider),
+                admin_client=admin_client,
+            )
+            multi_project_semantic_layer_config_provider = (
+                MultiProjectSemanticLayerConfigProvider(
+                    account_id=settings.dbt_account_id,
+                    credentials_provider=credentials_provider,
+                    admin_client=admin_client,
+                )
             )
 
     dbt_cli_config = None
@@ -180,8 +193,9 @@ def load_config(enable_proxied_tools: bool = True) -> Config:
         proxied_tool_config_provider=proxied_tool_config_provider,
         dbt_cli_config=dbt_cli_config,
         dbt_codegen_config=dbt_codegen_config,
-        multi_project_config_provider=multi_project_config_provider,
+        multi_project_discovery_config_provider=multi_project_config_provider,
         discovery_config_provider=discovery_config_provider,
+        multi_project_semantic_layer_config_provider=multi_project_semantic_layer_config_provider,
         semantic_layer_config_provider=semantic_layer_config_provider,
         admin_api_config_provider=admin_api_config_provider,
         credentials_provider=credentials_provider,
