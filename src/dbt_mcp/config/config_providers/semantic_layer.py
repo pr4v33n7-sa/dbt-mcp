@@ -1,11 +1,8 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from dbt_mcp.config.headers import (
     AdminApiHeadersProvider,
-    DiscoveryHeadersProvider,
     HeadersProvider,
-    ProxiedToolHeadersProvider,
     SemanticLayerHeadersProvider,
     TokenProvider,
 )
@@ -15,6 +12,9 @@ from dbt_mcp.errors import NotFoundError
 from dbt_mcp.errors.common import ConfigurationError
 from dbt_mcp.oauth.dbt_platform import DbtPlatformEnvironment
 
+from .admin_api import AdminApiConfig
+from .base import ConfigProvider, StaticConfigProvider
+
 
 @dataclass
 class SemanticLayerConfig:
@@ -23,30 +23,6 @@ class SemanticLayerConfig:
     prod_environment_id: int
     token_provider: TokenProvider
     headers_provider: HeadersProvider
-
-
-@dataclass
-class DiscoveryConfig:
-    url: str
-    headers_provider: HeadersProvider
-    environment_id: int
-
-
-@dataclass
-class AdminApiConfig:
-    url: str
-    headers_provider: HeadersProvider
-    account_id: int
-    prod_environment_id: int | None = None
-
-
-@dataclass
-class ProxiedToolConfig:
-    user_id: int | None
-    dev_environment_id: int | None
-    prod_environment_id: int | None
-    url: str
-    headers_provider: ProxiedToolHeadersProvider
 
 
 async def _resolve_project_environments(
@@ -78,15 +54,10 @@ async def _resolve_project_environments(
                 )
             )
         )
-    ).get_environments_for_project(settings.dbt_account_id, project_id)
+    ).get_environments_for_project(project_id)
     if not prod_env:
         raise ValueError(f"No production environment found for project {project_id}")
     return settings, token_provider, prod_env, dev_env
-
-
-class ConfigProvider[ConfigType](ABC):
-    @abstractmethod
-    async def get_config(self) -> ConfigType: ...
 
 
 class DefaultSemanticLayerConfigProvider(ConfigProvider[SemanticLayerConfig]):
@@ -171,8 +142,7 @@ class MultiProjectSemanticLayerConfigProvider(ConfigProvider[SemanticLayerConfig
         if not settings.dbt_account_id:
             raise ConfigurationError("Account ID is required for multi-project support")
         prod_env, _ = await self.admin_client.get_environments_for_project(
-            settings.dbt_account_id,
-            self.project_id,
+            self.project_id
         )
         if not prod_env or not prod_env.id:
             raise NotFoundError(
@@ -187,109 +157,3 @@ class MultiProjectSemanticLayerConfigProvider(ConfigProvider[SemanticLayerConfig
                 token_provider=token_provider
             ),
         )
-
-
-class DefaultDiscoveryConfigProvider(ConfigProvider[DiscoveryConfig]):
-    def __init__(self, credentials_provider: CredentialsProvider):
-        self.credentials_provider = credentials_provider
-
-    async def get_config(self) -> DiscoveryConfig:
-        settings, token_provider = await self.credentials_provider.get_credentials()
-        assert settings.actual_host and settings.actual_prod_environment_id
-        if settings.actual_host_prefix:
-            url = f"https://{settings.actual_host_prefix}.metadata.{settings.base_host}/graphql"
-        else:
-            url = f"https://metadata.{settings.actual_host}/graphql"
-
-        return DiscoveryConfig(
-            url=url,
-            headers_provider=DiscoveryHeadersProvider(token_provider=token_provider),
-            environment_id=settings.actual_prod_environment_id,
-        )
-
-
-class MultiProjectDiscoveryConfigProvider(ConfigProvider[DiscoveryConfig]):
-    def __init__(
-        self,
-        project_id: int,
-        credentials_provider: CredentialsProvider,
-        admin_client: DbtAdminAPIClient,
-    ):
-        self.project_id = project_id
-        self.credentials_provider = credentials_provider
-        self.admin_client = admin_client
-
-    async def get_config(self) -> DiscoveryConfig:
-        settings, token_provider = await self.credentials_provider.get_credentials()
-        assert settings.actual_host and settings.actual_prod_environment_id
-        if settings.actual_host_prefix:
-            url = f"https://{settings.actual_host_prefix}.metadata.{settings.base_host}/graphql"
-        else:
-            url = f"https://metadata.{settings.actual_host}/graphql"
-        if not settings.dbt_account_id:
-            raise ConfigurationError("Account ID is required for multi-project support")
-        prod_env, _ = await self.admin_client.get_environments_for_project(
-            settings.dbt_account_id,
-            self.project_id,
-        )
-        if not prod_env or not prod_env.id:
-            raise NotFoundError(
-                f"No production environment found for project {self.project_id}"
-            )
-        return DiscoveryConfig(
-            url=url,
-            headers_provider=DiscoveryHeadersProvider(token_provider=token_provider),
-            environment_id=prod_env.id,
-        )
-
-
-class DefaultAdminApiConfigProvider(ConfigProvider[AdminApiConfig]):
-    def __init__(self, credentials_provider: CredentialsProvider):
-        self.credentials_provider = credentials_provider
-
-    async def get_config(self) -> AdminApiConfig:
-        settings, token_provider = await self.credentials_provider.get_credentials()
-        assert settings.actual_host and settings.dbt_account_id
-        if settings.actual_host_prefix:
-            url = f"https://{settings.actual_host_prefix}.{settings.base_host}"
-        else:
-            url = f"https://{settings.actual_host}"
-
-        return AdminApiConfig(
-            url=url,
-            headers_provider=AdminApiHeadersProvider(token_provider=token_provider),
-            account_id=settings.dbt_account_id,
-            prod_environment_id=settings.actual_prod_environment_id,
-        )
-
-
-class DefaultProxiedToolConfigProvider(ConfigProvider[ProxiedToolConfig]):
-    def __init__(self, credentials_provider: CredentialsProvider):
-        self.credentials_provider = credentials_provider
-
-    async def get_config(self) -> ProxiedToolConfig:
-        settings, token_provider = await self.credentials_provider.get_credentials()
-        assert settings.actual_host
-        is_local = settings.actual_host and settings.actual_host.startswith("localhost")
-        path = "/v1/mcp/" if is_local else "/api/ai/v1/mcp/"
-        scheme = "http://" if is_local else "https://"
-        host_prefix = (
-            f"{settings.actual_host_prefix}." if settings.actual_host_prefix else ""
-        )
-        url = f"{scheme}{host_prefix}{settings.base_host}{path}"
-
-        return ProxiedToolConfig(
-            user_id=settings.dbt_user_id,
-            dev_environment_id=settings.dbt_dev_env_id,
-            prod_environment_id=settings.actual_prod_environment_id,
-            url=url,
-            headers_provider=ProxiedToolHeadersProvider(token_provider=token_provider),
-        )
-
-
-class StaticConfigProvider[T](ConfigProvider[T]):
-    def __init__(self, config: T):
-        self.config = config
-
-    async def get_config(self) -> T:
-        return self.config

@@ -27,6 +27,7 @@ from dbt_mcp.oauth.dbt_platform import (
 from dbt_mcp.oauth.token import (
     DecodedAccessToken,
 )
+from dbt_mcp.oauth.token_provider import StaticTokenProvider
 from dbt_mcp.project.project_resolver import (
     get_all_accounts,
     get_all_projects_for_account,
@@ -176,7 +177,7 @@ def create_app(
                 config=AdminApiConfig(
                     url=dbt_platform_url,
                     headers_provider=AdminApiHeadersProvider(
-                        token_provider=access_token
+                        token_provider=StaticTokenProvider(access_token)
                     ),
                     account_id=request.account_id,
                     prod_environment_id=None,
@@ -184,7 +185,6 @@ def create_app(
             )
         )
         environments = await admin_client.fetch_project_environment_responses(
-            request.account_id,
             request.project_id,
             page_size=100,
         )
@@ -222,7 +222,7 @@ def create_app(
                 config=AdminApiConfig(
                     url=dbt_platform_url,
                     headers_provider=AdminApiHeadersProvider(
-                        token_provider=access_token
+                        token_provider=StaticTokenProvider(access_token)
                     ),
                     account_id=selected_project_request.account_id,
                     prod_environment_id=selected_project_request.prod_environment_id,
@@ -230,7 +230,6 @@ def create_app(
             )
         )
         environments = await admin_client.fetch_project_environment_responses(
-            selected_project_request.account_id,
             selected_project_request.project_id,
             page_size=100,
         )

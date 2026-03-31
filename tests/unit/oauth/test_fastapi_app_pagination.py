@@ -120,7 +120,6 @@ async def test_fetch_project_environment_responses_paginates(base_headers):
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         result = await client.fetch_project_environment_responses(
-            account_id=1,
             project_id=9,
             page_size=2,
         )

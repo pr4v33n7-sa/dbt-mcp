@@ -5,12 +5,11 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from dbt_mcp.config.config_providers import (
-    ConfigProvider,
     DiscoveryConfig,
+    MultiProjectConfigProvider,
     MultiProjectDiscoveryConfigProvider,
 )
 from dbt_mcp.config.settings import CredentialsProvider
-from dbt_mcp.dbt_admin.client import DbtAdminAPIClient
 from dbt_mcp.discovery.client import (
     AppliedResourceType,
     ExposuresFetcher,
@@ -41,8 +40,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MultiProjectDiscoveryToolContext:
-    admin_client: DbtAdminAPIClient
-    credentials_provider: CredentialsProvider
+    config_provider: MultiProjectConfigProvider[DiscoveryConfig]
     models_fetcher: ModelsFetcher
     exposures_fetcher: ExposuresFetcher
     sources_fetcher: SourcesFetcher
@@ -53,12 +51,12 @@ class MultiProjectDiscoveryToolContext:
 
     def __init__(
         self,
-        config_provider: ConfigProvider[DiscoveryConfig],
+        *,
+        config_provider: MultiProjectConfigProvider[DiscoveryConfig],
         credentials_provider: CredentialsProvider,
-        admin_client: DbtAdminAPIClient,
     ):
-        self.credentials_provider = credentials_provider
         self.config_provider = config_provider
+        self.credentials_provider = credentials_provider
         self.models_fetcher = ModelsFetcher(
             paginator=PaginatedResourceFetcher(
                 edges_path=("data", "environment", "applied", "models", "edges"),
@@ -125,9 +123,7 @@ async def get_mart_models(
     context: MultiProjectDiscoveryToolContext,
     project_id: int = PROJECT_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     mart_models = await context.models_fetcher.fetch_models(
         model_filter={"modelingLayer": "marts"},
         config=config,
@@ -146,9 +142,7 @@ async def get_all_models(
     context: MultiProjectDiscoveryToolContext,
     project_id: int = PROJECT_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.models_fetcher.fetch_models(config=config)
 
 
@@ -165,9 +159,7 @@ async def get_model_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.MODEL,
         unique_id=unique_id,
@@ -189,9 +181,7 @@ async def get_model_parents(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.models_fetcher.fetch_model_parents(
         name, unique_id, config=config
     )
@@ -210,13 +200,7 @@ async def get_model_children(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id,
-        context.credentials_provider,
-        # TODO: admin_client needs to be dynamically created
-        # based on the account ID associated with the token
-        context.admin_client,
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.models_fetcher.fetch_model_children(
         model_name=name, unique_id=unique_id, config=config
     )
@@ -235,9 +219,7 @@ async def get_model_health(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.models_fetcher.fetch_model_health(
         model_name=name,
         unique_id=unique_id,
@@ -271,9 +253,7 @@ async def get_model_performance(
         "Default is False to reduce response size.",
     ),
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.model_performance_fetcher.fetch_performance(
         name=name,
         unique_id=unique_id,
@@ -297,9 +277,7 @@ async def get_lineage(
     types: list[LineageResourceType] | None = TYPES_FIELD,
     depth: int = DEPTH_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.lineage_fetcher.fetch_lineage(
         unique_id=unique_id, types=types, depth=depth, config=config
     )
@@ -316,9 +294,7 @@ async def get_exposures(
     context: MultiProjectDiscoveryToolContext,
     project_id: int = PROJECT_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.exposures_fetcher.fetch_exposures(config=config)
 
 
@@ -335,9 +311,7 @@ async def get_exposure_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.EXPOSURE,
         unique_id=unique_id,
@@ -359,9 +333,7 @@ async def get_all_sources(
     source_names: list[str] | None = None,
     unique_ids: list[str] | None = None,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.sources_fetcher.fetch_sources(
         source_names, unique_ids, config=config
     )
@@ -380,9 +352,7 @@ async def get_source_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.SOURCE,
         unique_id=unique_id,
@@ -418,9 +388,7 @@ async def get_all_macros(
         "are maintained by dbt Labs.",
     ),
 ) -> list[dict] | list[str]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.macros_fetcher.fetch_macros(
         package_names=package_names,
         return_package_names_only=return_package_names_only,
@@ -442,9 +410,7 @@ async def get_macro_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.MACRO,
         unique_id=unique_id,
@@ -466,9 +432,7 @@ async def get_seed_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.SEED,
         unique_id=unique_id,
@@ -490,9 +454,7 @@ async def get_semantic_model_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.SEMANTIC_MODEL,
         unique_id=unique_id,
@@ -514,9 +476,7 @@ async def get_snapshot_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.SNAPSHOT,
         unique_id=unique_id,
@@ -538,9 +498,7 @@ async def get_test_details(
     name: str | None = NAME_FIELD,
     unique_id: str | None = UNIQUE_ID_FIELD,
 ) -> list[dict]:
-    config = await MultiProjectDiscoveryConfigProvider(
-        project_id, context.credentials_provider, context.admin_client
-    ).get_config()
+    config = await context.config_provider.get_config(project_id=project_id)
     return await context.resource_details_fetcher.fetch_details(
         resource_type=AppliedResourceType.TEST,
         unique_id=unique_id,
@@ -573,9 +531,8 @@ MULTIPROJECT_DISCOVERY_TOOLS = [
 
 def register_multiproject_discovery_tools(
     dbt_mcp: FastMCP,
+    config_provider: MultiProjectDiscoveryConfigProvider,
     credentials_provider: CredentialsProvider,
-    discovery_config_provider: ConfigProvider[DiscoveryConfig],
-    admin_client: DbtAdminAPIClient,
     *,
     disabled_tools: set[ToolName],
     enabled_tools: set[ToolName] | None,
@@ -584,9 +541,8 @@ def register_multiproject_discovery_tools(
 ) -> None:
     def bind_context() -> MultiProjectDiscoveryToolContext:
         return MultiProjectDiscoveryToolContext(
-            config_provider=discovery_config_provider,
+            config_provider=config_provider,
             credentials_provider=credentials_provider,
-            admin_client=admin_client,
         )
 
     register_tools(

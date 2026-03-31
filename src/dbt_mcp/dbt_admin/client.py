@@ -101,7 +101,6 @@ class DbtAdminAPIClient:
 
     async def fetch_project_environment_responses(
         self,
-        account_id: int,
         project_id: int,
         *,
         page_size: int = 100,
@@ -109,10 +108,11 @@ class DbtAdminAPIClient:
         """Fetch all environments for a project using offset/limit pagination."""
         offset = 0
         environments: list[DbtPlatformEnvironmentResponse] = []
+        config = await self.config_provider.get_config()
         while True:
             result = await self._make_request(
                 "GET",
-                f"/api/v3/accounts/{account_id}/projects/{project_id}/environments/",
+                f"/api/v3/accounts/{config.account_id}/projects/{project_id}/environments/",
                 params={"state": 1, "offset": offset, "limit": page_size},
             )
             page_raw = result.get("data", [])
@@ -126,7 +126,6 @@ class DbtAdminAPIClient:
 
     async def get_environments_for_project(
         self,
-        account_id: int,
         project_id: int,
         *,
         prod_environment_id: int | None = None,
@@ -134,7 +133,6 @@ class DbtAdminAPIClient:
     ) -> tuple[DbtPlatformEnvironment | None, DbtPlatformEnvironment | None]:
         """Fetch environments for a project and resolve prod/dev."""
         raw = await self.fetch_project_environment_responses(
-            account_id,
             project_id,
             page_size=page_size,
         )
